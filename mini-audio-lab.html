@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini Audio Lab — SoundTouch Pitch</title>
+<style>
+  :root { --bg:#0b1220; --panel:#111a2b; --ink:#e8f0ff; --accent:#6aa1ff; --muted:#9bb3d7; }
+  * { box-sizing: border-box; font-family: Inter, system-ui, Segoe UI, Roboto, Arial, sans-serif; }
+  body { margin:0; background: radial-gradient(1200px 600px at 20% -10%, #152447, #0b1220); color:var(--ink); }
+  header { padding:24px 20px 0; text-align:center; }
+  header h1 { margin:0 0 6px; font-weight:800; letter-spacing:.2px; }
+  header p { margin:0; color:var(--muted); }
+  .wrap { max-width:980px; margin:24px auto 60px; padding:0 16px; }
+  .grid { display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card { background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+          border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  .row { display:flex; gap:10px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+  label { font-size:13px; color:var(--muted); min-width:140px; }
+  input[type="range"], select, input[type="file"] { flex:1; }
+  button { background:var(--accent); color:#071122; border:none; padding:10px 14px; border-radius:10px; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; border:1px solid rgba(255,255,255,.25); color:var(--ink); }
+  .big { font-size:18px; padding:12px 18px; }
+  .meter { font-variant-numeric: tabular-nums; color:var(--muted); }
+  .muted { color:var(--muted); font-size:12px; }
+  .footer { text-align:center; color:var(--muted); margin-top:24px; font-size:13px; }
+  .pill { display:inline-block; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.08); font-size:12px; color:var(--muted); }
+</style>
+<!-- Load SoundTouch.js -->
+<script src="https://cdn.jsdelivr.net/gh/corbanbrook/dsp.js/soundtouch.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>Mini Audio Lab</h1>
+  <p>Distortion • Bass Boost • Filters • Delay • Reverb • Pitch (SoundTouch) • Presets • Record • Bounce</p>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- 1. Load & Transport -->
+    <div class="card">
+      <h3>1) Load & Transport</h3>
+      <div class="row"><input id="file" type="file" accept="audio/*" /></div>
+      <div class="row">
+        <button id="play" class="big">▶️ Play</button>
+        <button id="pause" class="ghost big">⏸️ Pause</button>
+        <button id="stop" class="ghost big">⏹️ Stop</button>
+        <span id="time" class="meter">00:00 / 00:00</span>
+      </div>
+      <div class="row">
+        <label>Output Gain (dB)</label>
+        <input id="gain" type="range" min="-24" max="6" step="0.1" value="-3">
+        <span class="meter" id="gainVal">-3.0 dB</span>
+      </div>
+      <div class="row">
+        <label>Playback Rate (speed+pitch)</label>
+        <input id="rate" type="range" min="0.5" max="2.0" step="0.01" value="1.00">
+        <span class="meter" id="rateVal">1.00×</span>
+      </div>
+      <div class="muted">⚠️ This changes both speed & pitch. Use Pitch Shift for pitch-only.</div>
+    </div>
+    <!-- 2. Distortion -->
+    <div class="card">
+      <h3>2) Distortion</h3>
+      <div class="row">
+        <label>Drive</label>
+        <input id="distDrive" type="range" min="0" max="1000" step="1" value="400">
+        <span class="meter" id="distDriveVal">400</span>
+      </div>
+      <div class="row">
+        <label>Tone (Hz low-pass)</label>
+        <input id="distTone" type="range" min="500" max="12000" step="100" value="8000">
+        <span class="meter" id="distToneVal">8000 Hz</span>
+      </div>
+    </div>
+
+    <!-- 3. Bass Boost -->
+    <div class="card">
+      <h3>3) Bass Boost</h3>
+      <div class="row">
+        <label>Bass Gain (dB)</label>
+        <input id="bassGain" type="range" min="-10" max="12" step="0.5" value="0">
+        <span class="meter" id="bassGainVal">0 dB</span>
+      </div>
+    </div>
+
+    <!-- 4. Filter -->
+    <div class="card">
+      <h3>4) Filter</h3>
+      <div class="row">
+        <label>Filter Type</label>
+        <select id="filterType">
+          <option value="lowpass">Lowpass</option>
+          <option value="highpass">Highpass</option>
+          <option value="bandpass">Bandpass</option>
+          <option value="peaking">Peaking (EQ)</option>
+          <option value="notch">Notch</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Cutoff / Freq (Hz)</label>
+        <input id="filterFreq" type="range" min="50" max="12000" step="1" value="1200">
+        <span class="meter" id="freqVal">1200 Hz</span>
+      </div>
+      <div class="row">
+        <label>Q / Resonance</label>
+        <input id="filterQ" type="range" min="0.1" max="20" step="0.1" value="1.0">
+        <span class="meter" id="qVal">1.0</span>
+      </div>
+      <div class="row">
+        <label>Filter Gain (peaking)</label>
+        <input id="filterGain" type="range" min="-24" max="24" step="0.1" value="0">
+        <span class="meter" id="fGainVal">0.0 dB</span>
+      </div>
+      <div class="row">
+        <label>Wet / Dry Mix</label>
+        <input id="filterWet" type="range" min="0" max="1" step="0.01" value="0.6">
+        <span class="meter" id="fWetVal">0.60</span>
+      </div>
+    </div>
+
+    <!-- 5. Delay -->
+    <div class="card">
+      <h3>5) Delay</h3>
+      <div class="row">
+        <label>Delay Time (s)</label>
+        <input id="delayTime" type="range" min="0" max="1.0" step="0.005" value="0.25">
+        <span class="meter" id="dTimeVal">0.250 s</span>
+      </div>
+      <div class="row">
+        <label>Feedback</label>
+        <input id="delayFb" type="range" min="0" max="0.95" step="0.01" value="0.35">
+        <span class="meter" id="dFbVal">0.35</span>
+      </div>
+      <div class="row">
+        <label>Wet / Dry Mix</label>
+        <input id="delayWet" type="range" min="0" max="1" step="0.01" value="0.35">
+        <span class="meter" id="dWetVal">0.35</span>
+      </div>
+    </div>
+
+    <!-- 6. Reverb -->
+    <div class="card">
+      <h3>6) Reverb</h3>
+      <div class="row">
+        <label>Reverb Wet / Dry</label>
+        <input id="reverbWet" type="range" min="0" max="1" step="0.01" value="0.25">
+        <span class="meter" id="rWetVal">0.25</span>
+      </div>
+      <div class="muted">Impulse response generated procedurally.</div>
+    </div>
+
+    <!-- 7. Pitch Shift -->
+    <div class="card">
+      <h3>7) Pitch Shift</h3>
+      <div class="row">
+        <label>Shift (semitones)</label>
+        <input id="pitchShift" type="range" min="-12" max="12" step="1" value="0">
+        <span class="meter" id="pShiftVal">0 st</span>
+      </div>
+      <div class="muted">Uses SoundTouch.js in offline bounce ✅</div>
+    </div>
+
+    <!-- 8. Presets -->
+    <div class="card">
+      <h3>8) Presets</h3>
+      <div class="row">
+        <input id="presetName" type="text" placeholder="Preset name…" />
+        <button id="savePreset" class="big">💾 Save</button>
+      </div>
+      <div class="row">
+        <select id="presetList"></select>
+        <button id="loadPreset" class="ghost big">📂 Load</button>
+        <button id="deletePreset" class="ghost big">❌ Delete</button>
+      </div>
+      <div class="muted">Presets are saved in your browser’s localStorage.</div>
+    </div>
+    <!-- 9. Download -->
+    <div class="card">
+      <h3>9) Download</h3>
+      <div class="row">
+        <button id="recStart" class="big">⏺️ Start Recording (WebM)</button>
+        <button id="recStop" class="ghost big" disabled>⏹️ Stop</button>
+        <span id="recStatus" class="pill">idle</span>
+      </div>
+      <div class="row">
+        <button id="bounce" class="big">📀 Bounce to WAV</button>
+        <span id="bounceStatus" class="pill">ready</span>
+      </div>
+      <div class="row">
+        <a id="saveLast" class="big" href="#" download="output.wav">💾 Download Last File</a>
+      </div>
+      <div class="muted">Recording = live tweaks (.webm). Bounce = full render (.wav).</div>
+    </div>
+  </div>
+  <div class="footer">If playback fails, click Play again—browser wants a gesture to start audio.</div>
+</div>
+
+<script>
+(() => {
+  const $=id=>document.getElementById(id);
+
+  // Elements
+  const fileEl=$("file"), playBtn=$("play"), pauseBtn=$("pause"), stopBtn=$("stop");
+  const timeEl=$("time"), gainEl=$("gain"), gainVal=$("gainVal"), rateEl=$("rate"), rateVal=$("rateVal");
+  const distDrive=$("distDrive"), distDriveVal=$("distDriveVal");
+  const distTone=$("distTone"), distToneVal=$("distToneVal");
+  const bassGain=$("bassGain"), bassGainVal=$("bassGainVal");
+  const filterType=$("filterType"), filterFreq=$("filterFreq"), freqVal=$("freqVal");
+  const filterQ=$("filterQ"), qVal=$("qVal"), filterGain=$("filterGain"), fGainVal=$("fGainVal");
+  const filterWet=$("filterWet"), fWetVal=$("fWetVal");
+  const delayTime=$("delayTime"), dTimeVal=$("dTimeVal"), delayFb=$("delayFb"), dFbVal=$("dFbVal");
+  const delayWet=$("delayWet"), dWetVal=$("dWetVal");
+  const reverbWet=$("reverbWet"), rWetVal=$("rWetVal");
+  const pitchShift=$("pitchShift"), pShiftVal=$("pShiftVal");
+  const presetName=$("presetName"), savePreset=$("savePreset");
+  const presetList=$("presetList"), loadPreset=$("loadPreset"), deletePreset=$("deletePreset");
+  const recStart=$("recStart"), recStop=$("recStop"), recStatus=$("recStatus");
+  const bounceBtn=$("bounce"), bounceStatus=$("bounceStatus");
+  const saveLast=$("saveLast");
+
+  // Audio Context
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  let audioBuf=null, source=null, startTime=0, pauseOffset=0, duration=0;
+
+  // Master + Tap
+  const master=ctx.createGain(); master.connect(ctx.destination);
+  const tap=ctx.createGain(); master.connect(tap);
+
+  // Distortion
+  function makeDistortionCurve(amount=400){
+    const n=44100, curve=new Float32Array(n);
+    const deg=Math.PI/180;
+    for(let i=0;i<n;i++){
+      const x=i*2/n-1;
+      curve[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x));
+    }
+    return curve;
+  }
+  const waveShaper=ctx.createWaveShaper();
+  waveShaper.curve=makeDistortionCurve(400);
+  waveShaper.oversample="4x";
+  const distToneFilter=ctx.createBiquadFilter();
+  distToneFilter.type="lowpass"; distToneFilter.frequency.value=8000;
+  waveShaper.connect(distToneFilter);
+
+  // Bass Boost
+  const bass=ctx.createBiquadFilter();
+  bass.type="lowshelf"; bass.frequency.value=100; bass.gain.value=0;
+  distToneFilter.connect(bass);
+
+  // Dry path
+  const dry=ctx.createGain(); bass.connect(dry); dry.connect(master);
+
+  // Filter
+  const biquad=ctx.createBiquadFilter();
+  const filterOut=ctx.createGain();
+  biquad.connect(filterOut); filterOut.connect(master);
+
+  // Delay
+  const delay=ctx.createDelay(2.0);
+  const dWet=ctx.createGain(); const dFb=ctx.createGain();
+  delay.connect(dWet); dWet.connect(master);
+  delay.connect(dFb); dFb.connect(delay);
+
+  // Reverb
+  const convolver=ctx.createConvolver();
+  const rWet=ctx.createGain(); convolver.connect(rWet); rWet.connect(master);
+
+  // Pitch Shifter (granular live)
+  class PitchShifter {
+    constructor(ctx){
+      this.ctx=ctx;
+      this.input=ctx.createGain();
+      this.output=ctx.createGain();
+      this.pitch=0;
+      this.bufferSize=1024;
+      this.proc=ctx.createScriptProcessor(this.bufferSize,1,1);
+      this.proc.onaudioprocess=e=>this.process(e);
+      this.input.connect(this.proc);
+      this.proc.connect(this.output);
+      this.buf=new Float32Array(this.bufferSize*2);
+      this.bufIndex=0;
+    }
+    setPitch(semi){ this.pitch=Math.pow(2,semi/12); }
+    process(e){
+      const input=e.inputBuffer.getChannelData(0);
+      const output=e.outputBuffer.getChannelData(0);
+      for(let i=0;i<input.length;i++){
+        this.buf[this.bufIndex]=input[i];
+        this.bufIndex=(this.bufIndex+1)%this.buf.length;
+        output[i]=this.buf[(Math.floor(this.bufIndex*this.pitch))%this.buf.length]||0;
+      }
+    }
+  }
+  const shifter=new PitchShifter(ctx);
+  shifter.output.connect(waveShaper);
+
+  // Recorder
+  const recDest=ctx.createMediaStreamDestination(); tap.connect(recDest);
+  let mediaRecorder=null, recChunks=[], lastURL=null;
+
+  // Helpers
+  function dbToGain(db){return Math.pow(10,db/20);}
+  function connectSource(node){ node.connect(shifter.input); }
+  function createSource(){
+    if(!audioBuf) return null;
+    const s=ctx.createBufferSource();
+    s.buffer=audioBuf;
+    s.playbackRate.value=parseFloat(rateEl.value);
+    connectSource(s);
+    return s;
+  }
+  async function ensureRunning(){ if(ctx.state!=="running") await ctx.resume(); }
+  function setDownload(blob,name){
+    if(lastURL) URL.revokeObjectURL(lastURL);
+    lastURL=URL.createObjectURL(blob);
+    saveLast.href=lastURL; saveLast.download=name;
+  }
+  function fmt(sec){ if(!isFinite(sec)) return "00:00"; const m=Math.floor(sec/60),s=Math.floor(sec%60); return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`; }
+  function updateTime(){
+    let pos=pauseOffset;
+    if(source && startTime>0){ const rate=parseFloat(rateEl.value); pos=pauseOffset+(ctx.currentTime-startTime)*rate; }
+    pos=Math.max(0,Math.min(duration||0,pos));
+    timeEl.textContent=`${fmt(pos)} / ${fmt(duration)}`;
+    requestAnimationFrame(updateTime);
+  }
+  updateTime();
+  /* ========= File load ========= */
+  fileEl.onchange = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const arr = await f.arrayBuffer();
+    audioBuf = await ctx.decodeAudioData(arr);
+    duration = audioBuf.duration;
+    pauseOffset = 0;
+  };
+
+  /* ========= Transport ========= */
+  playBtn.onclick = async () => {
+    if (!audioBuf) return;
+    await ensureRunning();
+    if (source) return;
+    source = createSource();
+    startTime = ctx.currentTime;
+    source.onended = () => { source = null; startTime = 0; pauseOffset = 0; };
+    source.start(0, pauseOffset);
+  };
+  pauseBtn.onclick = () => {
+    if (!source) return;
+    pauseOffset += ctx.currentTime - startTime;
+    try { source.stop(); } catch {}
+    source = null; startTime = 0;
+  };
+  stopBtn.onclick = () => {
+    if (source) { try { source.stop(); } catch {} }
+    source = null; startTime = 0; pauseOffset = 0;
+  };
+
+  /* ========= Control bindings ========= */
+  gainEl.oninput=e=>{const db=+e.target.value; master.gain.value=dbToGain(db); gainVal.textContent=db.toFixed(1)+" dB";};
+  rateEl.oninput=e=>{const r=+e.target.value; rateVal.textContent=r.toFixed(2)+"×"; if(source) source.playbackRate.value=r;};
+
+  distDrive.oninput=e=>{const v=+e.target.value; waveShaper.curve=makeDistortionCurve(v); distDriveVal.textContent=v;};
+  distTone.oninput=e=>{const v=+e.target.value; distToneFilter.frequency.value=v; distToneVal.textContent=v+" Hz";};
+  bassGain.oninput=e=>{const v=+e.target.value; bass.gain.value=v; bassGainVal.textContent=v+" dB";};
+
+  filterType.onchange=e=>biquad.type=e.target.value;
+  filterFreq.oninput=e=>{const v=+e.target.value; biquad.frequency.value=v; freqVal.textContent=v+" Hz";};
+  filterQ.oninput=e=>{const v=+e.target.value; biquad.Q.value=v; qVal.textContent=v;};
+  filterGain.oninput=e=>{const v=+e.target.value; biquad.gain.value=v; fGainVal.textContent=v+" dB";};
+  filterWet.oninput=e=>{const v=+e.target.value; filterOut.gain.value=v; fWetVal.textContent=v;};
+
+  delayTime.oninput=e=>{const v=+e.target.value; delay.delayTime.value=v; dTimeVal.textContent=v+" s";};
+  delayFb.oninput=e=>{const v=+e.target.value; dFb.gain.value=v; dFbVal.textContent=v;};
+  delayWet.oninput=e=>{const v=+e.target.value; dWet.gain.value=v; dWetVal.textContent=v;};
+
+  reverbWet.oninput=e=>{const v=+e.target.value; rWet.gain.value=v; rWetVal.textContent=v;};
+
+  pitchShift.oninput=e=>{const semi=parseInt(e.target.value); pShiftVal.textContent=semi+" st"; shifter.setPitch(semi);};
+
+  /* ========= Reverb IR ========= */
+  function buildImpulse(seconds=2, decay=2){
+    const rate=ctx.sampleRate, len=Math.floor(rate*seconds);
+    const buf=ctx.createBuffer(2,len,rate);
+    for(let c=0;c<2;c++){
+      const chan=buf.getChannelData(c);
+      for(let i=0;i<len;i++){ chan[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay); }
+    }
+    return buf;
+  }
+  convolver.buffer = buildImpulse();
+
+  /* ========= Recording (live) ========= */
+  recStart.onclick = async () => {
+    await ensureRunning();
+    if (!audioBuf) return alert("Load an audio file first.");
+    const recDest = ctx.createMediaStreamDestination();
+    // Tap everything going to master
+    master.connect(recDest);
+
+    mediaRecorder = new MediaRecorder(recDest.stream);
+    recChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recChunks, { type: "audio/webm" });
+      const ts = new Date().toISOString().replace(/[:.]/g,"-");
+      setDownload(blob, "MiniAudioLab-" + ts + ".webm");
+      recStatus.textContent = "saved";
+    };
+    mediaRecorder.start();
+    recStatus.textContent = "recording…";
+    recStart.disabled = true; recStop.disabled = false;
+  };
+  recStop.onclick = () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+      recStatus.textContent = "finalizing…";
+      recStart.disabled = false; recStop.disabled = true;
+    }
+  };
+
+  /* ========= Offline Pitch (SoundTouch) helper ========= */
+  async function applyOfflinePitchWithSoundTouch(srcBuf, semitones){
+    try {
+      if (!window.soundtouch || !window.soundtouch.SoundTouch) {
+        console.warn("SoundTouch.js not available; skipping offline pitch.");
+        return null;
+      }
+      const st = new window.soundtouch.SoundTouch(srcBuf.sampleRate);
+      // Pitch only (keep tempo & rate)
+      const pitchRatio = Math.pow(2, semitones / 12);
+      st.pitch = pitchRatio;     // apply transposition
+      st.tempo = 1.0;            // keep tempo the same
+      st.rate  = 1.0;            // keep playback rate the same
+
+      // BufferSource expects an interleaved source wrapped — we can use provided helpers:
+      // NOTE: The exact API differs between builds; we guard with try/catch.
+      const BufferSource = window.soundtouch.BufferSource;
+      const SimpleFilter = window.soundtouch.SimpleFilter;
+      if (!BufferSource || !SimpleFilter) {
+        console.warn("SoundTouch helpers missing; skipping offline pitch.");
+        return null;
+      }
+
+      const source = new BufferSource(srcBuf);
+      const filter = new SimpleFilter(source, st);
+
+      const BLOCK = 16384;
+      const L = [];
+      const R = [];
+      let done = false;
+
+      while (!done) {
+        const outL = new Float32Array(BLOCK);
+        const outR = new Float32Array(BLOCK);
+        // Some builds expose filter.extractStereo(outL, outR, frames)
+        // Others use filter.extract() returning mono frames. We try stereo first:
+        let frames = 0;
+        if (typeof filter.extractStereo === "function") {
+          frames = filter.extractStereo(outL, outR, BLOCK);
+        } else if (typeof filter.extract === "function") {
+          // Fallback: mono extract; duplicate to both channels
+          frames = filter.extract(outL, BLOCK);
+          outR.set(outL);
+        } else {
+          console.warn("SoundTouch filter has no extract method; skipping offline pitch.");
+          return null;
+        }
+        if (frames > 0) {
+          L.push(outL.subarray(0, frames));
+          R.push(outR.subarray(0, frames));
+        } else {
+          done = true;
+        }
+      }
+
+      // Concatenate chunks
+      const total = L.reduce((n, chunk) => n + chunk.length, 0);
+      const left  = new Float32Array(total);
+      const right = new Float32Array(total);
+      let off = 0;
+      for (let i=0;i<L.length;i++){
+        left.set(L[i], off);
+        right.set(R[i], off);
+        off += L[i].length;
+      }
+
+      // Build new buffer
+      const out = new AudioBuffer({ numberOfChannels: 2, length: total, sampleRate: srcBuf.sampleRate });
+      out.copyToChannel(left, 0);
+      out.copyToChannel(right, 1);
+      return out;
+    } catch (err) {
+      console.warn("SoundTouch offline pitch failed; skipping. Error:", err);
+      return null;
+    }
+  }
+
+  /* ========= Bounce (with SoundTouch pitch, distortion, bass, filter, delay, reverb) ========= */
+  bounceBtn.onclick = async () => {
+    if (!audioBuf) return alert("Load an audio file first.");
+    bounceStatus.textContent = "bouncing…";
+
+    const settings = {
+      rate: +rateEl.value,
+      gain: +gainEl.value,
+      dist: { drive: +distDrive.value, tone: +distTone.value },
+      bass: { gain: +bassGain.value },
+      filter: { type: filterType.value, freq: +filterFreq.value, Q: +filterQ.value, gain: +filterGain.value, wet: +filterWet.value },
+      delay: { time: +delayTime.value, fb: +delayFb.value, wet: +delayWet.value },
+      reverb: { wet: +reverbWet.value },
+      pitch: parseInt(pitchShift.value)
+    };
+
+    // 1) Pitch-process the source buffer with SoundTouch (if available)
+    let pitchedBuf = null;
+    if (settings.pitch !== 0) {
+      pitchedBuf = await applyOfflinePitchWithSoundTouch(audioBuf, settings.pitch);
+      if (!pitchedBuf) console.warn("Proceeding without offline pitch (SoundTouch unavailable).");
+    }
+
+    // 2) Build the offline graph
+    // Account for playback rate and add a tail for echoes/reverb
+    const srcBuffer = pitchedBuf || audioBuf;
+    const srcDur = srcBuffer.duration / settings.rate;
+    const tail = 5.0; // seconds of tail
+    const off = new OfflineAudioContext(2, Math.ceil((srcDur + tail) * ctx.sampleRate), ctx.sampleRate);
+
+    // Source
+    const src = off.createBufferSource();
+    src.buffer = srcBuffer;
+    src.playbackRate.value = settings.rate;
+
+    // Master
+    const master = off.createGain();
+    master.gain.value = dbToGain(settings.gain);
+    master.connect(off.destination);
+
+    // Distortion
+    function makeDistortionCurve(amount=400){
+      const n=44100, curve=new Float32Array(n);
+      const deg=Math.PI/180;
+      for(let i=0;i<n;i++){
+        const x=i*2/n-1;
+        curve[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x));
+      }
+      return curve;
+    }
+    const ws = off.createWaveShaper();
+    ws.curve = makeDistortionCurve(settings.dist.drive);
+    ws.oversample = "4x";
+    const toneLP = off.createBiquadFilter();
+    toneLP.type = "lowpass";
+    toneLP.frequency.value = settings.dist.tone;
+    ws.connect(toneLP);
+
+    // Bass (low-shelf)
+    const bass = off.createBiquadFilter();
+    bass.type = "lowshelf";
+    bass.frequency.value = 100;
+    bass.gain.value = settings.bass.gain;
+    toneLP.connect(bass);
+
+    // Dry tap
+    const dry = off.createGain(); bass.connect(dry); dry.connect(master);
+
+    // Filter + wet
+    const biquad = off.createBiquadFilter();
+    biquad.type = settings.filter.type;
+    biquad.frequency.value = settings.filter.freq;
+    biquad.Q.value = settings.filter.Q;
+    biquad.gain.value = settings.filter.gain;
+    const fOut = off.createGain(); fOut.gain.value = settings.filter.wet;
+    biquad.connect(fOut); fOut.connect(master);
+
+    // Delay
+    const delay = off.createDelay(2.0);
+    delay.delayTime.value = settings.delay.time;
+    const dWet = off.createGain(); dWet.gain.value = settings.delay.wet;
+    const dFb  = off.createGain(); dFb.gain.value  = settings.delay.fb;
+    delay.connect(dWet); dWet.connect(master);
+    delay.connect(dFb);  dFb.connect(delay);
+
+    // Reverb
+    const convolver = off.createConvolver();
+    // Rebuild IR with same params
+    (function(){
+      const rate=off.sampleRate, len=Math.floor(rate*2);
+      const buf=off.createBuffer(2,len,rate);
+      for(let c=0;c<2;c++){
+        const chan=buf.getChannelData(c);
+        for(let i=0;i<len;i++){ chan[i]=(Math.random()*2-1)*Math.pow(1-i/len,2); }
+      }
+      convolver.buffer=buf;
+    })();
+    const rWet = off.createGain(); rWet.gain.value = settings.reverb.wet;
+    convolver.connect(rWet); rWet.connect(master);
+
+    // Wire source into graph
+    src.connect(ws);
+    src.connect(biquad);
+    src.connect(delay);
+    src.connect(convolver);
+
+    src.start(0);
+
+    const rendered = await off.startRendering();
+    const wav = encodeWav(rendered);
+    const ts = new Date().toISOString().replace(/[:.]/g,"-");
+    setDownload(wav, "MiniAudioLab-Bounce-" + ts + ".wav");
+    bounceStatus.textContent = "done";
+  };
+
+  /* ========= Presets ========= */
+  function getState(){ return {
+    gain:+gainEl.value, rate:+rateEl.value,
+    distDrive:+distDrive.value, distTone:+distTone.value,
+    bassGain:+bassGain.value,
+    filterType:filterType.value, filterFreq:+filterFreq.value,
+    filterQ:+filterQ.value, filterGain:+filterGain.value, filterWet:+filterWet.value,
+    delayTime:+delayTime.value, delayFb:+delayFb.value, delayWet:+delayWet.value,
+    reverbWet:+reverbWet.value,
+    pitch:+pitchShift.value
+  }; }
+  function setState(s){
+    gainEl.value=s.gain; gainEl.oninput({target:gainEl});
+    rateEl.value=s.rate; rateEl.oninput({target:rateEl});
+    distDrive.value=s.distDrive; distDrive.oninput({target:distDrive});
+    distTone.value=s.distTone; distTone.oninput({target:distTone});
+    bassGain.value=s.bassGain; bassGain.oninput({target:bassGain});
+    filterType.value=s.filterType; biquad.type=s.filterType;
+    filterFreq.value=s.filterFreq; filterFreq.oninput({target:filterFreq});
+    filterQ.value=s.filterQ; filterQ.oninput({target:filterQ});
+    filterGain.value=s.filterGain; filterGain.oninput({target:filterGain});
+    filterWet.value=s.filterWet; filterWet.oninput({target:filterWet});
+    delayTime.value=s.delayTime; delayTime.oninput({target:delayTime});
+    delayFb.value=s.delayFb; delayFb.oninput({target:delayFb});
+    delayWet.value=s.delayWet; delayWet.oninput({target:delayWet});
+    reverbWet.value=s.reverbWet; reverbWet.oninput({target:reverbWet});
+    pitchShift.value=s.pitch; pitchShift.oninput({target:pitchShift});
+  }
+  function loadPresets(){
+    presetList.innerHTML="";
+    const all=JSON.parse(localStorage.getItem("miniAudioPresets")||"{}");
+    for(const k in all){
+      const opt=document.createElement("option"); opt.value=k; opt.textContent=k;
+      presetList.appendChild(opt);
+    }
+  }
+  savePreset.onclick=()=>{
+    const name=presetName.value.trim();
+    if(!name) return alert("Enter a name for the preset.");
+    const all=JSON.parse(localStorage.getItem("miniAudioPresets")||"{}");
+    all[name]=getState();
+    localStorage.setItem("miniAudioPresets",JSON.stringify(all));
+    loadPresets();
+  };
+  loadPreset.onclick=()=>{
+    const name=presetList.value;
+    if(!name) return;
+    const all=JSON.parse(localStorage.getItem("miniAudioPresets")||"{}");
+    if(all[name]) setState(all[name]);
+  };
+  deletePreset.onclick=()=>{
+    const name=presetList.value;
+    if(!name) return;
+    const all=JSON.parse(localStorage.getItem("miniAudioPresets")||"{}");
+    delete all[name];
+    localStorage.setItem("miniAudioPresets",JSON.stringify(all));
+    loadPresets();
+  };
+  loadPresets();
+
+  /* ========= WAV encoder ========= */
+  function encodeWav(audioBuffer){
+    const nCh=audioBuffer.numberOfChannels, sr=audioBuffer.sampleRate, len=audioBuffer.length;
+    const inter=new Int16Array(len*nCh);
+    const tmp=new Float32Array(len);
+    for(let ch=0; ch<nCh; ch++){
+      audioBuffer.copyFromChannel(tmp, ch, 0);
+      for(let i=0, j=ch; i<len; i++, j+=nCh){
+        let v=Math.max(-1, Math.min(1, tmp[i]));
+        inter[j]=v<0? v*0x8000 : v*0x7FFF;
+      }
+    }
+    const buf=new ArrayBuffer(44 + inter.length*2);
+    const dv=new DataView(buf);
+    function wStr(o,s){ for(let i=0;i<s.length;i++) dv.setUint8(o+i, s.charCodeAt(i)); }
+    wStr(0,"RIFF"); dv.setUint32(4,36+inter.length*2,true); wStr(8,"WAVE");
+    wStr(12,"fmt "); dv.setUint32(16,16,true); dv.setUint16(20,1,true);
+    dv.setUint16(22,nCh,true); dv.setUint32(24,sr,true);
+    dv.setUint32(28,sr*nCh*2,true); dv.setUint16(32,nCh*2,true);
+    dv.setUint16(34,16,true); wStr(36,"data"); dv.setUint32(40,inter.length*2,true);
+    for(let i=0, off=44; i<inter.length; i++, off+=2) dv.setInt16(off, inter[i], true);
+    return new Blob([dv], {type:"audio/wav"});
+  }
+})();
+</script>
+</body>
+</html>
